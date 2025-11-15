@@ -51,6 +51,12 @@ type MouseMoveReply = {
   y: number;
 };
 
+type MousePressReply = {
+  t: "mouse_press";
+  state: number;
+  x: number;
+  y: number;
+};
 type WindowMapRequest = {
   t: "window_map";
   window: string;
@@ -80,6 +86,8 @@ let WindowFrame: Component<
     visible: boolean;
     x: number;
     y: number;
+    offsetX: number;
+    offsetY: number;
     width: number;
     height: number;
     window: string;
@@ -89,36 +97,30 @@ let WindowFrame: Component<
   }
 > = function (ctx) {
   ctx.mount = () => {
-    let offsetX = 0;
-    let offsetY = 0;
-
-    ctx.root.addEventListener("mousedown", (e) => {
-      this.mousedown = true;
-      offsetX = this.x - e.clientX;
-      offsetY = this.y - e.clientY;
-
-      message_queue.push({
-        t: "window_focus",
-        window: this.window,
-      } as WindowFocusRequest);
-    });
     document.addEventListener("mouseup", () => {
-      this.mousedown = false;
+      if (this.mousedown) {
+        this.mousedown = false;
+
+        message_queue.push({
+          t: "window_focus",
+          window: this.window,
+        } as WindowFocusRequest);
+      }
     });
     document.addEventListener("mousemove", (e) => {
       if (this.mousedown) {
         message_queue.push({
           t: "window_map",
-          x: e.clientX + offsetX,
-          y: e.clientY + offsetY,
+          x: e.clientX + this.offsetX,
+          y: e.clientY + this.offsetY,
           window: state.windows[this.window].window,
           width: state.windows[this.window].width,
           height: state.windows[this.window].height,
         } as WindowMapRequest);
 
-        state.window_buffer[this.window].x = e.clientX + offsetX;
-        state.window_buffer[this.window].y = e.clientY + offsetY;
-        state.window_buffer = state.window_buffer;
+        state.windows[this.window].x = e.clientX + this.offsetX;
+        state.windows[this.window].y = e.clientY + this.offsetY;
+        state.windows = state.windows;
       }
     });
   };
@@ -141,6 +143,16 @@ let WindowFrame: Component<
         class={use(this.mousedown).map((m) =>
           m ? "title-bar title-bar-active" : "title-bar",
         )}
+        on:mousedown={(e: MouseEvent) => {
+          this.mousedown = true;
+          this.offsetX = this.x - e.clientX;
+          this.offsetY = this.y - e.clientY;
+
+          message_queue.push({
+            t: "window_focus",
+            window: this.window,
+          } as WindowFocusRequest);
+        }}
       >
         <div class="title-bar-text">{this.window}</div>
         <div class="title-bar-controls">
@@ -155,13 +167,11 @@ let WindowFrame: Component<
 
 let state: Stateful<{
   windows: Record<string, WindowData>;
-  window_buffer: Record<string, WindowData>;
   window_order: string[];
   window_frames: Record<string, HTMLElement>;
   elapsed: DOMHighResTimeStamp;
 }> = createState({
   windows: {},
-  window_buffer: {},
   window_order: [],
   window_frames: {},
   elapsed: 0,
@@ -185,7 +195,6 @@ function step(timestamp: DOMHighResTimeStamp) {
   window.cefQuery({
     request: JSON.stringify(message_queue),
     onSuccess: (response: string) => {
-      state.windows = state.window_buffer;
       message_queue = [];
       if (response != "[]") console.log(response, state.elapsed);
 
@@ -200,11 +209,18 @@ function step(timestamp: DOMHighResTimeStamp) {
           );
           state.window_order.push(window_focus_reply.window);
           state.window_order = state.window_order;
-        }
-
-        if (response_parsed[segment]["t"] == "mouse_move") {
+        } else if (response_parsed[segment]["t"] == "mouse_move") {
           let mouse_move_reply = response_parsed[segment] as MouseMoveReply;
           let event = new MouseEvent("mousemove", {
+            clientX: mouse_move_reply.x,
+            clientY: mouse_move_reply.y,
+            view: window,
+          });
+          document.dispatchEvent(event);
+        }
+        if (response_parsed[segment]["t"] == "mouse_press") {
+          let mouse_move_reply = response_parsed[segment] as MousePressReply;
+          let event = new MouseEvent("mousepress", {
             clientX: mouse_move_reply.x,
             clientY: mouse_move_reply.y,
             view: window,
@@ -213,24 +229,26 @@ function step(timestamp: DOMHighResTimeStamp) {
         } else if (response_parsed[segment]["t"] == "window_map") {
           let window_map_reply = response_parsed[segment] as WindowMapReply;
 
-          if (
-            !state.window_buffer[window_map_reply.window] &&
-            window_map_reply.x == 0 &&
-            window_map_reply.y == 0 &&
-            window_map_reply.visible
-          ) {
-            message_queue.push({
-              t: "window_map",
-              x: 100,
-              y: 100,
-              window: window_map_reply.window,
-              width: window_map_reply.width,
-              height: window_map_reply.height,
-            } as WindowMapRequest);
-          }
+          if (!state.windows[window_map_reply.window]) {
+            if (
+              !state.windows[window_map_reply.window] &&
+              window_map_reply.x == 0 &&
+              window_map_reply.y == 0 &&
+              window_map_reply.visible
+            ) {
+              message_queue.push({
+                t: "window_map",
+                x: 100,
+                y: 100,
+                window: window_map_reply.window,
+                width: 500,
+                height: 500,
+              } as WindowMapRequest);
+              window_map_reply.x = 100;
+              window_map_reply.y = 100;
+            }
 
-          if (!state.window_buffer[window_map_reply.window]) {
-            state.window_buffer[window_map_reply.window] = {
+            state.windows[window_map_reply.window] = {
               window: window_map_reply.window,
               visible: window_map_reply.visible,
               x: window_map_reply.x,
@@ -238,18 +256,18 @@ function step(timestamp: DOMHighResTimeStamp) {
               width: window_map_reply.width,
               height: window_map_reply.height,
             };
-          } else if (state.window_buffer[window_map_reply.window]) {
-            state.window_buffer[window_map_reply.window] = {
+          } else if (state.windows[window_map_reply.window]) {
+            state.windows[window_map_reply.window] = {
               window: window_map_reply.window,
               visible: window_map_reply.visible,
-              x: state.window_buffer[window_map_reply.window].x,
-              y: state.window_buffer[window_map_reply.window].y,
+              x: state.windows[window_map_reply.window].x,
+              y: state.windows[window_map_reply.window].y,
               width: window_map_reply.width,
               height: window_map_reply.height,
             };
           }
 
-          state.window_buffer = state.window_buffer;
+          state.windows = state.windows;
 
           if (!state.window_order.includes(window_map_reply.window)) {
             state.window_order.push(window_map_reply.window);
@@ -331,6 +349,16 @@ let App: Component<{}, { counter: number; x: number; y: number }> = function (
         }}
       >
         Open kitty!
+      </button>
+      <button
+        on:click={() => {
+          message_queue.push({
+            t: "run_program",
+            command: "/usr/bin/xdemineur",
+          } as RunProgramRequest);
+        }}
+      >
+        Open minesweaper!
       </button>
     </div>
   );
