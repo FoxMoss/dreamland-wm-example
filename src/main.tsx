@@ -48,6 +48,7 @@ type WindowRegisterBorderRequest = {
 type WindowMapReply = {
   t: "window_map";
   window: string;
+  name: string;
   visible: boolean;
   x: number;
   y: number;
@@ -83,6 +84,7 @@ type RunProgramRequest = {
 
 type WindowData = {
   window: string;
+  name: string;
   visible: boolean;
   x: number;
   y: number;
@@ -91,6 +93,7 @@ type WindowData = {
 };
 
 const BORDER_WIDTH = 20;
+const BORDER_BASE = 3;
 let WindowFrame: Component<
   {
     visible: boolean;
@@ -107,6 +110,18 @@ let WindowFrame: Component<
   }
 > = function (ctx) {
   ctx.mount = () => {
+    let window_x = Math.max(state.windows[this.window].x, 0);
+    let window_y = Math.max(state.windows[this.window].y, BORDER_WIDTH);
+
+    message_queue.push({
+      t: "window_map",
+      x: window_x,
+      y: window_y,
+      window: state.windows[this.window].window,
+      width: state.windows[this.window].width,
+      height: state.windows[this.window].height,
+    } as WindowMapRequest);
+
     document.addEventListener("mouseup", () => {
       if (this.mousedown) {
         this.mousedown = false;
@@ -119,17 +134,20 @@ let WindowFrame: Component<
     });
     document.addEventListener("mousemove", (e) => {
       if (this.mousedown) {
+        const window_x = Math.max(e.clientX + this.offsetX, 0);
+        const window_y = Math.max(e.clientY + this.offsetY, BORDER_WIDTH);
+
         message_queue.push({
           t: "window_map",
-          x: e.clientX + this.offsetX,
-          y: e.clientY + this.offsetY,
+          x: window_x,
+          y: window_y,
           window: state.windows[this.window].window,
           width: state.windows[this.window].width,
           height: state.windows[this.window].height,
         } as WindowMapRequest);
 
-        state.windows[this.window].x = e.clientX + this.offsetX;
-        state.windows[this.window].y = e.clientY + this.offsetY;
+        state.windows[this.window].x = window_x;
+        state.windows[this.window].y = window_y;
         state.windows = state.windows;
       }
     });
@@ -138,9 +156,9 @@ let WindowFrame: Component<
     <div
       style={{
         position: "absolute",
-        left: use(this.x).map((x) => x + "px"),
-        top: use(this.y).map((y) => y - BORDER_WIDTH + "px"),
-        width: use(this.width).map((w) => w + "px"),
+        left: use(this.x).map((x) => x - BORDER_BASE + "px"),
+        top: use(this.y).map((y) => y + -BORDER_WIDTH + -BORDER_BASE + "px"),
+        width: use(this.width).map((w) => w + BORDER_BASE + "px"),
         height: use(this.height).map((h) => h + BORDER_WIDTH + "px"),
         display: use(this.visible).map((v) => (v ? "block" : "none")),
         cursor: "pointer",
@@ -148,6 +166,7 @@ let WindowFrame: Component<
           (order.indexOf(this.window) + 1).toString(),
         ),
       }}
+      class="window"
     >
       <div
         class={use(this.mousedown).map((m) =>
@@ -167,7 +186,7 @@ let WindowFrame: Component<
           state.window_order.push(this.window);
         }}
       >
-        <div class="title-bar-text">{this.window}</div>
+        <div class="title-bar-text">{state.windows[this.window].name}</div>
         <div class="title-bar-controls">
           <button aria-label="Minimize"></button>
           <button aria-label="Maximize"></button>
@@ -197,7 +216,7 @@ let state: Stateful<{
   window_frames: {},
   elapsed: 0,
 });
-let message_queue: WindowDataSegment[] = [];
+let message_queue: WindowDataSegment[] = [{ t: "browser_start" }];
 
 use(state.window_order).listen((val) => {
   message_queue.push({
@@ -256,6 +275,8 @@ function step(timestamp: DOMHighResTimeStamp) {
             view: window,
           });
           document.dispatchEvent(event);
+        } else if (response_parsed[segment]["t"] == "reload") {
+          window.location.reload();
         } else if (response_parsed[segment]["t"] == "mouse_press") {
           let mouse_move_reply = response_parsed[segment] as MousePressReply;
           let event = new MouseEvent("mousepress", {
@@ -288,6 +309,7 @@ function step(timestamp: DOMHighResTimeStamp) {
 
             state.windows[window_map_reply.window] = {
               window: window_map_reply.window,
+              name: window_map_reply.name,
               visible: window_map_reply.visible,
               x: window_map_reply.x,
               y: window_map_reply.y,
@@ -346,10 +368,10 @@ function step(timestamp: DOMHighResTimeStamp) {
                     message_queue.push({
                       t: "window_register_border",
                       window: window_map_reply.window,
-                      x: 0,
-                      y: -BORDER_WIDTH,
-                      width: 0,
-                      height: 0,
+                      x: -BORDER_BASE,
+                      y: -BORDER_WIDTH + -BORDER_BASE,
+                      width: BORDER_BASE,
+                      height: BORDER_BASE,
                     } as WindowRegisterBorderRequest);
                   }
 
