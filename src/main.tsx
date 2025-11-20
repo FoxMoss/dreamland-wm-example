@@ -93,6 +93,7 @@ type WindowData = {
 };
 
 const BORDER_WIDTH = 20;
+const MIN_SIZE = 150;
 const BORDER_BASE = 3;
 let WindowFrame: Component<
   {
@@ -102,11 +103,26 @@ let WindowFrame: Component<
     width: number;
     height: number;
     window: string;
+    name: string;
   },
   {
     mousedown: boolean;
-    offsetX: number;
-    offsetY: number;
+    offset_x: number;
+    offset_y: number;
+
+    mouse_x: number;
+    mouse_y: number;
+
+    e_resize: boolean;
+    s_resize: boolean;
+    w_resize: boolean;
+    se_resize: boolean;
+    sw_resize: boolean;
+
+    old_x: number;
+    old_y: number;
+    old_width: number;
+    old_height: number;
   }
 > = function (ctx) {
   ctx.mount = () => {
@@ -123,19 +139,24 @@ let WindowFrame: Component<
     } as WindowMapRequest);
 
     document.addEventListener("mouseup", () => {
-      if (this.mousedown) {
-        this.mousedown = false;
+      this.mousedown = false;
+      this.e_resize = false;
+      this.s_resize = false;
+      this.w_resize = false;
+      this.se_resize = false;
+      this.sw_resize = false;
 
+      if (this.mousedown) {
         message_queue.push({
           t: "window_focus",
           window: this.window,
         } as WindowFocusRequest);
       }
     });
-    document.addEventListener("mousemove", (e) => {
+    document.addEventListener("mousemove", (e: MouseEvent) => {
       if (this.mousedown) {
-        const window_x = Math.max(e.clientX + this.offsetX, 0);
-        const window_y = Math.max(e.clientY + this.offsetY, BORDER_WIDTH);
+        const window_x = Math.max(e.clientX + this.offset_x, 0);
+        const window_y = Math.max(e.clientY + this.offset_y, BORDER_WIDTH);
 
         message_queue.push({
           t: "window_map",
@@ -150,60 +171,289 @@ let WindowFrame: Component<
         state.windows[this.window].y = window_y;
         state.windows = state.windows;
       }
+
+      if (this.e_resize) {
+        let delta_x = e.clientX - this.mouse_x;
+        const new_width = Math.max(this.old_width + delta_x, MIN_SIZE);
+
+        message_queue.push({
+          t: "window_map",
+          x: state.windows[this.window].x,
+          y: state.windows[this.window].y,
+          window: state.windows[this.window].window,
+          width: new_width,
+          height: state.windows[this.window].height,
+        } as WindowMapRequest);
+
+        state.windows[this.window].width = new_width;
+        state.windows = state.windows;
+      }
+
+      if (this.s_resize) {
+        let delta_y = e.clientY - this.mouse_y;
+        const new_height = Math.max(this.old_height + delta_y, MIN_SIZE);
+
+        message_queue.push({
+          t: "window_map",
+          x: state.windows[this.window].x,
+          y: state.windows[this.window].y,
+          window: state.windows[this.window].window,
+          width: state.windows[this.window].width,
+          height: new_height,
+        } as WindowMapRequest);
+
+        state.windows[this.window].height = new_height;
+        state.windows = state.windows;
+      }
+      if (this.se_resize) {
+        let delta_y = e.clientY - this.mouse_y;
+        const new_height = Math.max(this.old_height + delta_y, MIN_SIZE);
+        let delta_x = e.clientX - this.mouse_x;
+        const new_width = Math.max(this.old_width + delta_x, MIN_SIZE);
+
+        message_queue.push({
+          t: "window_map",
+          x: state.windows[this.window].x,
+          y: state.windows[this.window].y,
+          window: state.windows[this.window].window,
+          width: new_width,
+          height: new_height,
+        } as WindowMapRequest);
+
+        state.windows[this.window].width = new_width;
+        state.windows[this.window].height = new_height;
+        state.windows = state.windows;
+      }
+      if (this.w_resize) {
+        let delta_x = e.clientX - this.mouse_x;
+        const new_width = Math.max(this.old_width - delta_x, MIN_SIZE);
+        const new_x = Math.max(this.old_x + delta_x, 0);
+
+        message_queue.push({
+          t: "window_map",
+          x: new_x,
+          y: state.windows[this.window].y,
+          window: state.windows[this.window].window,
+          width: new_width,
+          height: state.windows[this.window].height,
+        } as WindowMapRequest);
+
+        state.windows[this.window].x = new_x;
+        state.windows[this.window].width = new_width;
+        state.windows = state.windows;
+      }
+      if (this.sw_resize) {
+        let delta_x = e.clientX - this.mouse_x;
+        const new_width = Math.max(this.old_width - delta_x, MIN_SIZE);
+        const new_x = Math.max(this.old_x + delta_x, 0);
+        let delta_y = e.clientY - this.mouse_y;
+        const new_height = Math.max(this.old_height + delta_y, MIN_SIZE);
+
+        message_queue.push({
+          t: "window_map",
+          x: new_x,
+          y: state.windows[this.window].y,
+          window: state.windows[this.window].window,
+          width: new_width,
+          height: new_height,
+        } as WindowMapRequest);
+
+        state.windows[this.window].x = new_x;
+        state.windows[this.window].width = new_width;
+        state.windows[this.window].height = new_height;
+        state.windows = state.windows;
+      }
     });
   };
   return (
-    <div
-      style={{
-        position: "absolute",
-        left: use(this.x).map((x) => x - BORDER_BASE + "px"),
-        top: use(this.y).map((y) => y + -BORDER_WIDTH + -BORDER_BASE + "px"),
-        width: use(this.width).map((w) => w + BORDER_BASE + "px"),
-        height: use(this.height).map((h) => h + BORDER_WIDTH + "px"),
-        display: use(this.visible).map((v) => (v ? "block" : "none")),
-        cursor: "pointer",
-        "z-index": use(state.window_order).map((order) =>
-          (order.indexOf(this.window) + 1).toString(),
-        ),
-      }}
-      class="window"
-    >
+    <div>
       <div
-        class={use(this.mousedown).map((m) =>
-          m ? "title-bar title-bar-active" : "title-bar",
-        )}
-        on:mousedown={(e: MouseEvent) => {
-          this.mousedown = true;
-          this.offsetX = this.x - e.clientX;
-          this.offsetY = this.y - e.clientY;
+        style={{
+          position: "absolute",
+          left: use(this.x).map((x) => x - BORDER_BASE + "px"),
+          top: use(this.y).map((y) => y + -BORDER_WIDTH + -BORDER_BASE + "px"),
+          width: use(this.width).map((w) => w + "px"),
+          height: use(this.height).map((h) => h + BORDER_WIDTH + "px"),
+          display: use(this.visible).map((v) => (v ? "block" : "none")),
+          cursor: "pointer",
+          "z-index": use(state.window_order).map((order) =>
+            (order.indexOf(this.window) + 1).toString(),
+          ),
+        }}
+        class="window"
+      >
+        <div
+          class={use(this.mousedown).map((m) =>
+            m ? "title-bar title-bar-active" : "title-bar",
+          )}
+          on:mousedown={(e: MouseEvent) => {
+            this.mousedown = true;
+            this.offset_x = this.x - e.clientX;
+            this.offset_y = this.y - e.clientY;
+            this.mouse_x = e.clientX;
+            this.mouse_y = e.clientY;
 
-          if (state.window_order.includes(this.window)) {
-            state.window_order.splice(
-              state.window_order.indexOf(this.window),
-              1,
-            );
-          }
-          state.window_order.push(this.window);
+            if (state.window_order.includes(this.window)) {
+              state.window_order.splice(
+                state.window_order.indexOf(this.window),
+                1,
+              );
+            }
+            state.window_order.push(this.window);
+          }}
+        >
+          <div class="title-bar-text">{use(this.name)}</div>
+          <div class="title-bar-controls">
+            <button aria-label="Minimize"></button>
+            <button
+              aria-label="Maximize"
+              on:mousedown={() => {
+                message_queue.push({
+                  t: "window_map",
+                  x: BORDER_BASE,
+                  y: BORDER_WIDTH + BORDER_BASE,
+                  window: state.windows[this.window].window,
+                  width: window.screen.width + - BORDER_BASE*2,
+                  height:
+                    window.screen.height - BORDER_WIDTH + -BORDER_BASE * 2,
+                } as WindowMapRequest);
+
+                state.windows[this.window].x = BORDER_BASE;
+                state.windows[this.window].y = BORDER_WIDTH + BORDER_BASE;
+                state.windows[this.window].width =
+                  window.screen.width + - BORDER_BASE *2;
+                state.windows[this.window].height =
+                  window.screen.height - BORDER_WIDTH + -BORDER_BASE * 2;
+                state.windows = state.windows;
+              }}
+            ></button>
+            <button
+              aria-label="Close"
+              on:mousedown={() => {
+                message_queue.push({
+                  t: "window_close",
+                  window: this.window,
+                } as WindowCloseRequest);
+              }}
+            ></button>
+          </div>
+        </div>
+      </div>
+      <div
+        class="window_handles"
+        style={{
+          position: "absolute",
+          left: use(this.x).map((x) => x - BORDER_BASE + "px"),
+          top: use(this.y).map((y) => y + -BORDER_WIDTH + -BORDER_BASE + "px"),
+          width: use(this.width).map((w) => w + BORDER_BASE * 2 + "px"),
+          height: use(this.height).map(
+            (h) => h + BORDER_WIDTH + BORDER_BASE * 2 + "px",
+          ),
+          display: use(this.visible).map((v) => (v ? "grid" : "none")),
+          "z-index": use(state.window_order).map((order) =>
+            (order.indexOf(this.window) + 1).toString(),
+          ),
+          "pointer-events": "none",
         }}
       >
-        <div class="title-bar-text">{state.windows[this.window].name}</div>
-        <div class="title-bar-controls">
-          <button aria-label="Minimize"></button>
-          <button aria-label="Maximize"></button>
-          <button
-            aria-label="Close"
-            on:click={() => {
-              message_queue.push({
-                t: "window_close",
-                window: this.window,
-              } as WindowCloseRequest);
-            }}
-          ></button>
-        </div>
+        <div
+          style={{
+            "pointer-events": "auto",
+            cursor: "ew-resize",
+          }}
+          on:mousedown={(e: MouseEvent) => {
+            this.w_resize = true;
+            this.mouse_x = e.clientX;
+            this.mouse_y = e.clientY;
+
+            this.old_x = this.x;
+            this.old_y = this.y;
+            this.old_width = this.width;
+            this.old_height = this.height;
+          }}
+        ></div>
+        <div
+          style={{
+            "background-color": "transparent",
+            "pointer-events": "none",
+          }}
+        ></div>
+        <div
+          style={{
+            "pointer-events": "auto",
+            cursor: "ew-resize",
+          }}
+          on:mousedown={(e: MouseEvent) => {
+            this.e_resize = true;
+            this.mouse_x = e.clientX;
+            this.mouse_y = e.clientY;
+
+            this.old_x = this.x;
+            this.old_y = this.y;
+            this.old_width = this.width;
+            this.old_height = this.height;
+          }}
+        ></div>
+
+        <div
+          style={{
+            "pointer-events": "auto",
+            cursor: "nesw-resize",
+          }}
+          on:mousedown={(e: MouseEvent) => {
+            this.sw_resize = true;
+            this.mouse_x = e.clientX;
+            this.mouse_y = e.clientY;
+
+            this.old_x = this.x;
+            this.old_y = this.y;
+            this.old_width = this.width;
+            this.old_height = this.height;
+          }}
+        ></div>
+        <div
+          style={{
+            "pointer-events": "auto",
+            cursor: "ns-resize",
+          }}
+          on:mousedown={(e: MouseEvent) => {
+            this.s_resize = true;
+            this.mouse_x = e.clientX;
+            this.mouse_y = e.clientY;
+
+            this.old_x = this.x;
+            this.old_y = this.y;
+            this.old_width = this.width;
+            this.old_height = this.height;
+          }}
+        ></div>
+        <div
+          style={{
+            "pointer-events": "auto",
+            cursor: "nwse-resize",
+          }}
+          on:mousedown={(e: MouseEvent) => {
+            this.se_resize = true;
+            this.mouse_x = e.clientX;
+            this.mouse_y = e.clientY;
+
+            this.old_x = this.x;
+            this.old_y = this.y;
+            this.old_width = this.width;
+            this.old_height = this.height;
+          }}
+        ></div>
       </div>
     </div>
   );
 };
+
+WindowFrame.style = css`
+  .window_handles {
+    grid-template-columns: ${BORDER_BASE.toString()}px 1fr ${BORDER_BASE.toString()}px;
+    grid-template-rows: 1fr ${BORDER_BASE.toString()}px;
+  }
+`;
 
 let state: Stateful<{
   windows: Record<string, WindowData>;
@@ -320,10 +570,11 @@ function step(timestamp: DOMHighResTimeStamp) {
             state.windows[window_map_reply.window] = {
               window: window_map_reply.window,
               visible: window_map_reply.visible,
+              name: window_map_reply.name,
               x: state.windows[window_map_reply.window].x,
               y: state.windows[window_map_reply.window].y,
-              width: window_map_reply.width,
-              height: window_map_reply.height,
+              width: state.windows[window_map_reply.window].width,
+              height: state.windows[window_map_reply.window].height,
             };
 
             if (
@@ -351,6 +602,9 @@ function step(timestamp: DOMHighResTimeStamp) {
           if (!state.window_frames[window_map_reply.window]) {
             state.window_frames[window_map_reply.window] = (
               <WindowFrame
+                name={use(state.windows).map(
+                  () => state.windows[window_map_reply.window].name,
+                )}
                 x={use(state.windows).map(
                   () => state.windows[window_map_reply.window].x,
                 )}
