@@ -107,8 +107,11 @@ let WindowFrame: Component<
   },
   {
     mousedown: boolean;
+
     offset_x: number;
     offset_y: number;
+
+    fullscreen: boolean;
 
     mouse_x: number;
     mouse_y: number;
@@ -142,7 +145,6 @@ let WindowFrame: Component<
     } as WindowMapRequest);
 
     document.addEventListener("mouseup", () => {
-      this.mousedown = false;
       this.n_resize = false;
       this.e_resize = false;
       this.s_resize = false;
@@ -157,9 +159,68 @@ let WindowFrame: Component<
           t: "window_focus",
           window: this.window,
         } as WindowFocusRequest);
+
+        if (state.window_order.includes(this.window)) {
+          state.window_order.splice(state.window_order.indexOf(this.window), 1);
+        }
+        state.window_order.push(this.window);
       }
+
+      this.mousedown = false;
     });
     document.addEventListener("mousemove", (e: MouseEvent) => {
+      const window_corrected_x = Math.max(this.x, 0);
+      const window_corrected_y = Math.max(this.y, BORDER_WIDTH);
+
+      if (
+        this.nw_resize ||
+        this.s_resize ||
+        this.se_resize ||
+        this.w_resize ||
+        this.sw_resize ||
+        this.n_resize ||
+        this.e_resize ||
+        this.ne_resize ||
+        this.mousedown
+      ) {
+        if (state.window_order.includes(this.window)) {
+          state.window_order.splice(state.window_order.indexOf(this.window), 1);
+        }
+        state.window_order.push(this.window);
+        state.window_order = state.window_order;
+      }
+
+      if (
+        this.fullscreen &&
+        (this.nw_resize ||
+          this.s_resize ||
+          this.se_resize ||
+          this.w_resize ||
+          this.sw_resize ||
+          this.n_resize ||
+          this.e_resize ||
+          this.ne_resize ||
+          this.mousedown)
+      ) {
+        this.fullscreen = false;
+        message_queue.push({
+          t: "window_map",
+          x: this.old_x,
+          y: this.old_y,
+          window: state.windows[this.window].window,
+          width: this.old_width,
+          height: this.old_height,
+        } as WindowMapRequest);
+
+        state.windows[this.window].x = this.old_x;
+        state.windows[this.window].y = this.old_y;
+        state.windows[this.window].width = this.old_width;
+        state.windows[this.window].height = this.old_height;
+        state.windows = state.windows;
+
+        this.offset_x = -(this.old_width / 2);
+      }
+
       if (this.mousedown) {
         const window_x = Math.max(e.clientX + this.offset_x, 0);
         const window_y = Math.max(e.clientY + this.offset_y, BORDER_WIDTH);
@@ -184,13 +245,15 @@ let WindowFrame: Component<
 
         message_queue.push({
           t: "window_map",
-          x: state.windows[this.window].x,
-          y: state.windows[this.window].y,
+          x: window_corrected_x,
+          y: window_corrected_y,
           window: state.windows[this.window].window,
           width: new_width,
           height: state.windows[this.window].height,
         } as WindowMapRequest);
 
+        state.windows[this.window].x = window_corrected_x;
+        state.windows[this.window].y = window_corrected_y;
         state.windows[this.window].width = new_width;
         state.windows = state.windows;
       }
@@ -202,17 +265,19 @@ let WindowFrame: Component<
 
         message_queue.push({
           t: "window_map",
-          x: state.windows[this.window].x,
+          x: window_corrected_x,
           y: new_y,
           window: state.windows[this.window].window,
           width: state.windows[this.window].width,
           height: new_height,
         } as WindowMapRequest);
 
+        state.windows[this.window].x = window_corrected_x;
         state.windows[this.window].y = new_y;
         state.windows[this.window].height = new_height;
         state.windows = state.windows;
       }
+
       if (this.ne_resize) {
         let delta_y = e.clientY - this.mouse_y;
         let delta_x = e.clientX - this.mouse_x;
@@ -222,18 +287,20 @@ let WindowFrame: Component<
 
         message_queue.push({
           t: "window_map",
-          x: state.windows[this.window].x,
+          x: window_corrected_x,
           y: new_y,
           window: state.windows[this.window].window,
           width: new_width,
           height: new_height,
         } as WindowMapRequest);
 
+        state.windows[this.window].x = window_corrected_x;
         state.windows[this.window].y = new_y;
         state.windows[this.window].height = new_height;
         state.windows[this.window].width = new_width;
         state.windows = state.windows;
       }
+
       if (this.nw_resize) {
         let delta_y = e.clientY - this.mouse_y;
         let delta_x = e.clientX - this.mouse_x;
@@ -257,22 +324,26 @@ let WindowFrame: Component<
         state.windows[this.window].width = new_width;
         state.windows = state.windows;
       }
+
       if (this.s_resize) {
         let delta_y = e.clientY - this.mouse_y;
         const new_height = Math.max(this.old_height + delta_y, MIN_SIZE);
 
         message_queue.push({
           t: "window_map",
-          x: state.windows[this.window].x,
-          y: state.windows[this.window].y,
+          x: window_corrected_x,
+          y: window_corrected_y,
           window: state.windows[this.window].window,
           width: state.windows[this.window].width,
           height: new_height,
         } as WindowMapRequest);
 
+        state.windows[this.window].x = window_corrected_x;
+        state.windows[this.window].y = window_corrected_y;
         state.windows[this.window].height = new_height;
         state.windows = state.windows;
       }
+
       if (this.se_resize) {
         let delta_y = e.clientY - this.mouse_y;
         const new_height = Math.max(this.old_height + delta_y, MIN_SIZE);
@@ -281,17 +352,20 @@ let WindowFrame: Component<
 
         message_queue.push({
           t: "window_map",
-          x: state.windows[this.window].x,
-          y: state.windows[this.window].y,
+          x: window_corrected_x,
+          y: window_corrected_y,
           window: state.windows[this.window].window,
           width: new_width,
           height: new_height,
         } as WindowMapRequest);
 
+        state.windows[this.window].x = window_corrected_x;
+        state.windows[this.window].y = window_corrected_y;
         state.windows[this.window].width = new_width;
         state.windows[this.window].height = new_height;
         state.windows = state.windows;
       }
+
       if (this.w_resize) {
         let delta_x = e.clientX - this.mouse_x;
         const new_width = Math.max(this.old_width - delta_x, MIN_SIZE);
@@ -300,16 +374,18 @@ let WindowFrame: Component<
         message_queue.push({
           t: "window_map",
           x: new_x,
-          y: state.windows[this.window].y,
+          y: window_corrected_y,
           window: state.windows[this.window].window,
           width: new_width,
           height: state.windows[this.window].height,
         } as WindowMapRequest);
 
         state.windows[this.window].x = new_x;
+        state.windows[this.window].y = window_corrected_y;
         state.windows[this.window].width = new_width;
         state.windows = state.windows;
       }
+
       if (this.sw_resize) {
         let delta_x = e.clientX - this.mouse_x;
         const new_width = Math.max(this.old_width - delta_x, MIN_SIZE);
@@ -320,13 +396,14 @@ let WindowFrame: Component<
         message_queue.push({
           t: "window_map",
           x: new_x,
-          y: state.windows[this.window].y,
+          y: window_corrected_y,
           window: state.windows[this.window].window,
           width: new_width,
           height: new_height,
         } as WindowMapRequest);
 
         state.windows[this.window].x = new_x;
+        state.windows[this.window].y = window_corrected_y;
         state.windows[this.window].width = new_width;
         state.windows[this.window].height = new_height;
         state.windows = state.windows;
@@ -334,7 +411,17 @@ let WindowFrame: Component<
     });
   };
   return (
-    <div>
+    <div
+      on:mousedown={() => {
+        this.mousedown = true;
+
+        if (state.window_order.includes(this.window)) {
+          state.window_order.splice(state.window_order.indexOf(this.window), 1);
+        }
+        state.window_order.push(this.window);
+        state.window_order = state.window_order;
+      }}
+    >
       <div
         style={{
           position: "absolute",
@@ -354,7 +441,12 @@ let WindowFrame: Component<
           class={use(this.mousedown).map((m) =>
             m ? "title-bar title-bar-active" : "title-bar",
           )}
+          id="title-bar"
           on:mousedown={(e: MouseEvent) => {
+            if ((e.target as HTMLElement).id !== "title-bar") {
+              return;
+            }
+
             this.mousedown = true;
             this.offset_x = this.x - e.clientX;
             this.offset_y = this.y - e.clientY;
@@ -368,14 +460,23 @@ let WindowFrame: Component<
               );
             }
             state.window_order.push(this.window);
+            state.window_order = state.window_order;
           }}
         >
-          <div class="title-bar-text">{use(this.name)}</div>
+          <div class="title-bar-text" id="title-bar">
+            {use(this.name)}
+          </div>
           <div class="title-bar-controls">
             <button aria-label="Minimize"></button>
             <button
               aria-label="Maximize"
               on:mousedown={() => {
+                this.fullscreen = true;
+                this.old_x = this.x;
+                this.old_y = this.y;
+                this.old_width = this.width;
+                this.old_height = this.height;
+
                 message_queue.push({
                   t: "window_map",
                   x: BORDER_BASE,
@@ -717,6 +818,15 @@ function step(timestamp: DOMHighResTimeStamp) {
           }
 
           if (!state.window_frames[window_map_reply.window]) {
+            message_queue.push({
+              t: "window_register_border",
+              window: window_map_reply.window,
+              x: -BORDER_BASE,
+              y: -BORDER_WIDTH + -BORDER_BASE,
+              width: BORDER_BASE,
+              height: BORDER_BASE,
+            } as WindowRegisterBorderRequest);
+
             state.window_frames[window_map_reply.window] = (
               <WindowFrame
                 name={use(state.windows).map(
@@ -735,17 +845,6 @@ function step(timestamp: DOMHighResTimeStamp) {
                   () => state.windows[window_map_reply.window].height,
                 )}
                 visible={use(state.windows).map(() => {
-                  if (state.windows[window_map_reply.window].visible) {
-                    message_queue.push({
-                      t: "window_register_border",
-                      window: window_map_reply.window,
-                      x: -BORDER_BASE,
-                      y: -BORDER_WIDTH + -BORDER_BASE,
-                      width: BORDER_BASE,
-                      height: BORDER_BASE,
-                    } as WindowRegisterBorderRequest);
-                  }
-
                   return state.windows[window_map_reply.window].visible;
                 })}
                 window={window_map_reply.window}
@@ -757,7 +856,9 @@ function step(timestamp: DOMHighResTimeStamp) {
         }
       }
     },
-    onFailure: function (_error_code: number, _error_message: string) {},
+    onFailure: function (_error_code: number, _error_message: string) {
+      message_queue = [];
+    },
   });
 
   requestAnimationFrame(step);
