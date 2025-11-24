@@ -31,6 +31,12 @@ type WindowFocusRequest = {
   window: string;
 };
 
+type WindowIconReply = {
+  t: "window_icon";
+  window: string;
+  image: string;
+};
+
 type WindowReorderRequest = {
   t: "window_reorder";
   windows: string[];
@@ -106,6 +112,7 @@ type WindowData = {
   y: number;
   width: number;
   height: number;
+  image: string | null;
 };
 
 const BORDER_WIDTH = 20;
@@ -120,6 +127,7 @@ let WindowFrame: Component<
     height: number;
     window: string;
     name: string;
+    icon: string | null;
   },
   {
     mousedown: boolean;
@@ -483,10 +491,22 @@ let WindowFrame: Component<
           }}
         >
           <div class="title-bar-text" id="title-bar">
+            {use(this.icon).map((icon) => {
+              if (!icon) {
+                return "";
+              }
+              return (
+                <img
+                  width={BORDER_WIDTH  - 8 }
+                  height={BORDER_WIDTH  - 8}
+                  src={icon}
+                  style={{"margin-right": "10px"}}
+                />
+              );
+            })}
             {use(this.name)}
           </div>
           <div class="title-bar-controls">
-            <button aria-label="Minimize"></button>
             <button
               aria-label="Maximize"
               on:mousedown={() => {
@@ -773,6 +793,11 @@ function step(timestamp: DOMHighResTimeStamp) {
             view: window,
           });
           document.dispatchEvent(event);
+        } else if (response_parsed[segment]["t"] == "window_icon") {
+          let window_icon_reply = response_parsed[segment] as WindowIconReply;
+
+          state.windows[window_icon_reply.window].image =
+            window_icon_reply.image;
         } else if (response_parsed[segment]["t"] == "window_map") {
           let window_map_reply = response_parsed[segment] as WindowMapReply;
 
@@ -804,6 +829,7 @@ function step(timestamp: DOMHighResTimeStamp) {
                 y: window_map_reply.y,
                 width: window_map_reply.width,
                 height: window_map_reply.height,
+                image: null,
               };
             } else if (state.windows[window_map_reply.window]) {
               state.windows[window_map_reply.window] = {
@@ -814,6 +840,7 @@ function step(timestamp: DOMHighResTimeStamp) {
                 y: state.windows[window_map_reply.window].y,
                 width: state.windows[window_map_reply.window].width,
                 height: state.windows[window_map_reply.window].height,
+                image: state.windows[window_map_reply.window].image,
               };
 
               if (
@@ -871,6 +898,9 @@ function step(timestamp: DOMHighResTimeStamp) {
                   visible={use(state.windows).map(() => {
                     return state.windows[window_map_reply.window].visible;
                   })}
+                  icon={use(state.windows).map(() => 
+                   state.windows[window_map_reply.window].image
+                  )}
                   window={window_map_reply.window}
                 />
               );
@@ -953,5 +983,9 @@ App.style = css``;
 document.querySelector("#app")?.replaceWith(<App />);
 
 document.oncontextmenu = document.body.oncontextmenu = function () {
+  return false;
+};
+
+document.onkeydown = function () {
   return false;
 };
