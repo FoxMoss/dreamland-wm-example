@@ -497,10 +497,10 @@ let WindowFrame: Component<
               }
               return (
                 <img
-                  width={BORDER_WIDTH  - 8 }
-                  height={BORDER_WIDTH  - 8}
+                  width={BORDER_WIDTH - 8}
+                  height={BORDER_WIDTH - 8}
                   src={icon}
-                  style={{"margin-right": "10px"}}
+                  style={{ "margin-right": "10px" }}
                 />
               );
             })}
@@ -542,6 +542,8 @@ let WindowFrame: Component<
                   t: "window_close",
                   window: this.window,
                 } as WindowCloseRequest);
+
+                state.windows[this.window].visible = false;
               }}
             ></button>
           </div>
@@ -724,6 +726,7 @@ let state: Stateful<{
   elapsed: 0,
 });
 let message_queue: WindowDataSegment[] = [{ t: "browser_start" }];
+let message_back_buffer: WindowDataSegment[] = [];
 
 use(state.window_order).listen((val) => {
   message_queue.push({
@@ -739,10 +742,13 @@ function step(timestamp: DOMHighResTimeStamp) {
   }
   state.elapsed = timestamp - start;
 
+  message_back_buffer = message_queue;
+  message_queue = [];
+
   window.cefQuery({
-    request: JSON.stringify(message_queue),
+    request: JSON.stringify(message_back_buffer),
     onSuccess: (response: string) => {
-      message_queue = [];
+      message_back_buffer = [];
       if (response != "[]") console.log(response, state.elapsed);
 
       const response_parsed = JSON.parse(response) as WindowDataSegment[];
@@ -898,8 +904,8 @@ function step(timestamp: DOMHighResTimeStamp) {
                   visible={use(state.windows).map(() => {
                     return state.windows[window_map_reply.window].visible;
                   })}
-                  icon={use(state.windows).map(() => 
-                   state.windows[window_map_reply.window].image
+                  icon={use(state.windows).map(
+                    () => state.windows[window_map_reply.window].image,
                   )}
                   window={window_map_reply.window}
                 />
