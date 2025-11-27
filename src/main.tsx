@@ -927,12 +927,21 @@ function step(timestamp: DOMHighResTimeStamp) {
 
 requestAnimationFrame(step);
 
-let App: Component<{}, { counter: number; x: number; y: number }> = function (
-  ctx,
-) {
+let App: Component<
+  {},
+  {
+    counter: number;
+    x: number;
+    y: number;
+    showLauncher: boolean;
+    programInput: string;
+  }
+> = function (ctx) {
   this.counter = 0;
   this.x = 0;
   this.y = 0;
+  this.showLauncher = false;
+  this.programInput = "";
 
   ctx.mount = () => {
     document.addEventListener("mousemove", (e) => {
@@ -941,43 +950,112 @@ let App: Component<{}, { counter: number; x: number; y: number }> = function (
     });
   };
 
+  const runProgram = () => {
+    if (this.programInput.trim()) {
+      message_queue.push({
+        t: "run_program",
+        command: this.programInput.trim().split(" "),
+      } as RunProgramRequest);
+      this.programInput = "";
+      this.showLauncher = false;
+    }
+  };
+
   return (
     <div style={{ width: "100%", height: "100%" }}>
       <div
         on:mousedown={() => {
-          message_queue.push({
-            t: "run_program",
-            command: ["/usr/bin/rofi", "-show", "drun"],
-          } as RunProgramRequest);
+          this.showLauncher = !this.showLauncher;
+          if (this.showLauncher) {
+            setTimeout(() => {
+            document.getElementById("launcher-textbox")?.focus();
+            }, 100)
+          }
         }}
         style={{ width: "100%", height: "100%" }}
+      ></div>
+
+      <div
+        style={{
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          padding: "20px",
+          display: use(this.showLauncher).map((show) => {
+            return show ? "block" : "none";
+          }),
+        }}
+        class="window window-body"
+        on:mousedown={(e: MouseEvent) => {
+          e.stopPropagation();
+        }}
       >
-        <div style={{ display: "none" }}>
-          {use(this.x)},{use(this.y)}
-          {use(state.windows).map((wins) => JSON.stringify(wins))}
-          {use(state.window_order).map((wins) => JSON.stringify(wins))}
+        <div style={{ "margin-bottom": "10px", "font-weight": "bold" }}>
+          Run Program
+        </div>
+        <input
+          type="text"
+          id="launcher-textbox"
+          value={use(this.programInput)}
+          autocomplete="off"
+          on:input={(e: Event) => {
+            this.programInput = (e.target as HTMLInputElement).value;
+          }}
+          on:keydown={(e: KeyboardEvent) => {
+            if (e.key === "Enter") {
+              runProgram();
+            } else if (e.key === "Escape") {
+              this.showLauncher = false;
+              this.programInput = "";
+            }
+          }}
+          placeholder="Enter program name..."
+          style={{
+            width: "300px",
+            "margin-bottom": "10px",
+          }}
+          ref={(el: HTMLInputElement) => {
+            setTimeout(() => el?.focus(), 0);
+          }}
+        />
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            "justify-content": "flex-end",
+          }}
+        >
           <button
-            on:click={() => {
-              message_queue.push({
-                t: "run_program",
-                command: ["/usr/bin/kitty"],
-              } as RunProgramRequest);
+            on:mousedown={(e: MouseEvent) => {
+              e.stopPropagation();
+              runProgram();
             }}
+            style={{
+              padding: "5px 15px",
+              cursor: "pointer",
+            }}
+            class="normal"
           >
-            Open kitty!
+            Run
           </button>
           <button
-            on:click={() => {
-              message_queue.push({
-                t: "run_program",
-                command: ["/usr/bin/xdemineur"],
-              } as RunProgramRequest);
+            on:mousedown={(e: MouseEvent) => {
+              e.stopPropagation();
+              this.showLauncher = false;
+              this.programInput = "";
             }}
+            style={{
+              padding: "5px 15px",
+              cursor: "pointer",
+            }}
+            class="normal"
           >
-            Open minesweaper!
+            Cancel
           </button>
         </div>
       </div>
+
       {use(state.window_frames).map((wins) => {
         return Object.values(wins);
       })}
@@ -989,9 +1067,5 @@ App.style = css``;
 document.querySelector("#app")?.replaceWith(<App />);
 
 document.oncontextmenu = document.body.oncontextmenu = function () {
-  return false;
-};
-
-document.onkeydown = function () {
   return false;
 };
